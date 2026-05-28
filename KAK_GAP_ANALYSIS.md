@@ -81,7 +81,7 @@ Pengukuran ini bersifat indikatif (belum benchmark formal). Dilakukan pada 28 Me
 | Sub-PoC | Status repo | Catatan |
 |---|---|---|
 | Integrasi Layanan (API, skema metadata interop, error checking, jejak aktivitas) | 🟡 | OpenAPI auto-generated dari FastAPI ada (`/docs`). Belum ada skema metadata standar interop (mis. JSON Schema sesuai standar ANRI/SPBE), error contract konsisten, audit log. |
-| JRA Dashboard — Monitoring Retensi Arsip | ➖ | Berkaitan dengan modul Retensi (item §2.1 #2 KAK). Di luar repo ini. |
+| JRA Dashboard — Monitoring Retensi Arsip | 🟡 | **Prototype FE tersedia** di `sri_demo_fe/src/pages/JraDashboardPage.tsx` (tab "Retensi (JRA)") sebagai bukti UX/UI: KPI cards (aktif/inaktif/musnah/permanen), banner peringatan (overdue + mendekati jatuh tempo + menunggu persetujuan), pipeline penyusutan 6-tahap, line chart tren 12 bulan (SVG murni), distribusi per klasifikasi (Perka ANRI: KU/KP/HK/OT/PR/HM/TI/UM/PL/PW), dan tabel arsip perlu tindakan. **Data masih simulasi** (`src/lib/mock/jraData.ts`) — backend retensi (engine penghitung jatuh tempo, workflow persetujuan musnah sesuai PP 28/2012 ps. 65) belum diimplementasi. |
 | Penyusutan Arsip Elektronik | ➖ | Modul pemusnahan & lifecycle (KAK §2.1 #14, #15, #16). |
 | Standar Keamanan Aplikasi Web (BSSN) | ❌ | Repo belum ada auth — tidak ada login, JWT, password hashing, lockout, HSTS, rate limit. Untuk PoC keamanan, harus dibangun terpisah atau sebagai bagian dari aplikasi utama. |
 | Standar Keamanan Mobile (Android/iOS) | ➖ | Repo ini backend + web, mobile di luar scope. |
