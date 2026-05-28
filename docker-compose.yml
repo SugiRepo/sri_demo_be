@@ -1,0 +1,26 @@
+services:
+  tika:
+    image: apache/tika:latest
+    container_name: sri_demo_tika
+    ports:
+      - "9998:9998"
+    restart: unless-stopped
+
+  # Elasticsearch lokal sudah dimatikan: pakai Elastic Cloud (lihat .env).
+  # Jika suatu saat ingin pakai ES lokal lagi, aktifkan kembali blok ini
+  # dan ubah ELASTICSEARCH_URL kembali ke http://localhost:9200.
+  #
+  # elasticsearch:
+  #   image: docker.elastic.co/elasticsearch/elasticsearch:9.1.7
+  #   container_name: sri_demo_elasticsearch
+  #   environment:
+  #     - discovery.type=single-node
+  #     - xpack.security.enabled=false
+  #     - ES_JAVA_OPTS=-Xms512m -Xmx512m
+  #   ports:
+  #     - "9200:9200"
+  #   volumes:
+  #     - sri_demo_es_data:/usr/share/elasticsearch/data
+
+# volumes:
+#   sri_demo_es_data:
