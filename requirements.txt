@@ -1,6 +1,7 @@
 # Python 3.11+ recommended (tested on 3.13)
 fastapi==0.136.3
 uvicorn[standard]==0.48.0
+python-multipart==0.0.20
 python-dotenv==1.2.2
 sqlmodel==0.0.38
 psycopg2-binary==2.9.12

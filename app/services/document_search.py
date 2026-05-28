@@ -1,13 +1,42 @@
 import logging
 import re
+from functools import lru_cache
 
-from elasticsearch import BadRequestError
+from elasticsearch import BadRequestError, NotFoundError
 
 from app.config import ELASTICSEARCH_URL, INDEX_NAME, es
 
 logger = logging.getLogger("app.services.document_search")
 
 WILDCARD_SPECIALS = re.compile(r"([*?\\])")
+
+
+@lru_cache(maxsize=1)
+def _resolve_collapse_field() -> str:
+    """
+    Tentukan field collapse berdasarkan mapping aktual index.
+    - Jika document_id sudah bertipe 'keyword' (mis. di ES Cloud kita), pakai langsung.
+    - Jika 'text' dengan subfield '.keyword' (auto-mapping default), pakai 'document_id.keyword'.
+    Fallback ke 'document_id' agar tidak menggagalkan request kalau mapping tak terbaca.
+    """
+    try:
+        mapping = es.indices.get_mapping(index=INDEX_NAME)
+    except NotFoundError:
+        return "document_id"
+    except Exception as exc:
+        logger.warning("Tidak bisa membaca mapping %s: %s", INDEX_NAME, exc)
+        return "document_id"
+
+    try:
+        props = mapping[INDEX_NAME]["mappings"]["properties"]
+        node = props.get("document_id", {})
+        if node.get("type") == "keyword":
+            return "document_id"
+        if "fields" in node and node["fields"].get("keyword", {}).get("type") == "keyword":
+            return "document_id.keyword"
+    except KeyError:
+        pass
+    return "document_id"
 
 
 class ElasticsearchConnectionError(Exception):
@@ -155,7 +184,9 @@ def search_documents(
     _ensure_elasticsearch_connection()
 
     es_query, search_text, is_phrase = _build_search_query(query)
-    collapse_field = "document_id"
+    # Collapse harus pakai field bertipe keyword.
+    # Resolve otomatis sesuai mapping aktual (ES Cloud vs auto-mapping lokal).
+    collapse_field = _resolve_collapse_field()
 
     search_kwargs: dict = {
         "index": INDEX_NAME,
