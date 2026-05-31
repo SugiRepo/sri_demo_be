@@ -1,3 +1,4 @@
+import logging
 import os
 from contextlib import asynccontextmanager
 
@@ -9,12 +10,26 @@ from app.api_v1.router import api_v1_router
 from app.database import init_db
 from app.logging_config import setup_logging
 from app.routers import documents, health, metadata
+from app.services import ner_indonesian
+
+# Aktifkan warm-up NER saat startup supaya request pertama tidak menunggu
+# ~2 detik load model. Bisa di-disable via env (mis. di lingkungan low-RAM /
+# CI) tanpa mengubah kode: `NER_WARMUP=0`.
+_NER_WARMUP_DEFAULT = "1"
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     setup_logging()
     init_db()
+
+    if os.getenv("NER_WARMUP", _NER_WARMUP_DEFAULT) == "1":
+        ner_indonesian.warmup()
+    else:
+        logging.getLogger("main").info(
+            "NER warmup skipped (NER_WARMUP=0). Model akan di-load saat request "
+            "pertama dengan ?use_ner=true."
+        )
     yield
 
 

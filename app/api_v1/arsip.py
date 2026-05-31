@@ -268,18 +268,31 @@ async def upload_arsip(
 @router.get(
     "/{document_id}/metadata",
     response_model=SuccessResponse[MetadataExtractionData],
-    summary="Ekstraksi metadata Layer 1 (regex)",
+    summary="Ekstraksi metadata (Layer 1 regex + opsional Layer 2 NER)",
     description=(
-        "Menjalankan ekstraksi metadata terstruktur (nomor surat, sifat, "
-        "lampiran, perihal, tanggal, klasifikasi, NIP, penerima) pada teks "
-        "halaman pertama dokumen. Layer 1 = rule-based regex, latency "
-        "&lt; 50 ms. Layer 2 (NER IndoBERT) akan dipanggil otomatis untuk "
-        "field free-form bila tersedia."
+        "Menjalankan ekstraksi metadata terstruktur pada teks halaman pertama "
+        "dokumen.\n\n"
+        "**Layer 1 (default)** — rule-based regex, latency &lt; 50 ms. Mengisi:\n"
+        "nomor surat, sifat, lampiran, perihal, tempat, tanggal, klasifikasi, "
+        "NIP, penerima.\n\n"
+        "**Layer 2 (opsional, `?use_ner=true`)** — Indonesian NER (spaCy), "
+        "latency tambahan ~20-50 ms. Mengisi field free-form yang tidak "
+        "tertangkap regex: `instansi_pengirim`, `lokasi_disebut`, "
+        "`organisasi_disebut`, `fasilitas_disebut`, `regulasi_disebut`. "
+        "Bila model NER tidak ter-install, response tetap 200 dengan "
+        "`ner_available=false` (Layer 1 tetap jalan)."
     ),
 )
 def get_arsip_metadata(
     document_id: str,
     request: Request,
+    use_ner: bool = Query(
+        False,
+        description=(
+            "Jalankan juga Layer 2 (NER) untuk mengisi field free-form. "
+            "Default off supaya backward-compatible & hemat latency."
+        ),
+    ),
 ) -> SuccessResponse[MetadataExtractionData]:
     try:
         response = es.search(
@@ -312,7 +325,7 @@ def get_arsip_metadata(
         )
 
     try:
-        extraction = extract_metadata(content)
+        extraction = extract_metadata(content, use_ner=use_ner)
     except Exception as exc:
         raise ApiError(
             ErrorCode.EXTRACTION_ERROR,

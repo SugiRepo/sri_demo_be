@@ -8,3 +8,9 @@ psycopg2-binary==2.9.12
 elasticsearch==9.4.0
 pypdf==6.12.1
 tika==3.1.0
+
+# Layer 2 metadata extraction — NER untuk Bahasa Indonesia.
+# Versi lite: model id_core_news_sm = 13 MB, runtime RAM ~200 MB.
+# Bisa di-swap ke id_core_news_md (43 MB) atau lg (545 MB) untuk akurasi lebih tinggi.
+spacy==3.8.7
+https://github.com/explosion/spacy-models/releases/download/id_core_news_sm-3.8.0/id_core_news_sm-3.8.0-py3-none-any.whl

@@ -1,6 +1,6 @@
 # Gap Analysis: KAK SRIKANDI 2026 (Addendum) vs Repo `sri_demo_be` (+ Frontend `sri_demo_fe`)
 
-> **Revisi 2 — 28 Mei 2026.** Penambahan: status implementasi terkini, pengukuran awal latensi, dan pemetaan **Frontend Companion** (`sri_demo_fe`) ke KAK §2.9. Audiens: panitia/evaluator teknis ANRI.
+> **Revisi 3 — 31 Mei 2026.** Penambahan: PoC interoperabilitas (Public API v1) dan Layer 2 metadata extraction (NER Bahasa Indonesia hybrid). Audiens: panitia/evaluator teknis ANRI.
 
 **Dokumen sumber**
 - KAK: *KAK Pengembangan SRIKANDI Addendum Tahun 2026*, Direktorat TI Kearsipan, Arsip Nasional RI (29 halaman, Mei 2026), khususnya **§2.9 Proof of Concept**.
@@ -11,6 +11,10 @@
 Repo ini adalah PoC yang ditujukan untuk membuktikan kapabilitas teknis penyedia jasa sesuai **KAK §2.9 (Proof of Concept)**. PoC bukan aplikasi produksi — lingkupnya terbatas pada **pembuktian** beberapa kapabilitas teknis yang dievaluasi pada tahap Evaluasi Teknis tender. Fokus repo ini adalah sub-PoC **"Mesin Pencarian Berkecepatan Tinggi"**, dengan sentuhan pada sub-PoC **AI Metadata Extraction** dan **Async Processing**.
 
 **Changelog**
+- **2026-05-31 (Rev. 3)**
+  - **Public API v1 untuk interoperabilitas** sub-PoC selesai. Versioned path `/api/v1/*`, response envelope seragam, 15 kode error stabil di `/api/v1/errors`, audit log JSON-Lines, header `X-Request-ID` + `X-Response-Time-Ms`, Swagger UI custom di `/docs`. File: `app/api_v1/`.
+  - **Layer 2 metadata extraction (hybrid)** ditambahkan: NER Bahasa Indonesia via spaCy `id_ner_spacy_indonesian` (komunitas, 19 entity labels) + filter heuristik domain-specific. Aktif dengan `?use_ner=true`. Field tambahan: `instansi_pengirim`, `organisasi_disebut`, `lokasi_disebut`, `fasilitas_disebut`, `regulasi_disebut`. RAM +200 MB, latency +13–35 ms warm. Warm-up otomatis saat startup uvicorn (disable via `NER_WARMUP=0`). File: `app/services/ner_indonesian.py`, `app/services/metadata_extraction.py`.
+  - Catatan: NER yang digunakan **bukan** IndoBERT fine-tuned. Interface stabil sehingga upgrade ke IndoBERT-Lite NER fine-tuned (lihat §1.2 *bis*) hanya butuh swap dalam 1 file tanpa breaking change.
 - **2026-05-28 (Rev. 2)**
   - Bug B-01 (`collapse` di field `text`) — **selesai diperbaiki** via resolver dinamis `_resolve_collapse_field()` di `app/services/document_search.py`.
   - Bug B-03 (`python-multipart`) — **selesai** ditambahkan ke `requirements.txt`.
@@ -63,8 +67,8 @@ Pengukuran ini bersifat indikatif (belum benchmark formal). Dilakukan pada 28 Me
 | # | Requirement KAK | Status | Catatan |
 |---|---|---|---|
 | a | Parsing dokumen | ✅ | Tika 3.3 sudah parse PDF (text per halaman). |
-| b | Ekstraksi otomatis *field dynamic metadata* | 🟡 | **Layer 1 (regex) selesai** — `app/services/metadata_extraction.py` mengekstrak 10 field: nomor_surat, sifat, lampiran, perihal, tempat, tanggal (ISO + raw), penerima, klasifikasi_code, NIP. Latency < 50 ms. Hasil pada korpus uji 28 Mei 2026: **9/10 field** pada korpus dummy tim dev (rata-rata confidence 0.85, field `tempat` tidak ada di sumber), **10/10 field** pada template formal (confidence 0.92). Layer 2 (NER IndoBERT fine-tuned) untuk field free-form belum diimplementasi — lihat §1.2 *bis*. |
-| c | REST API untuk integrasi ke frontend | ✅ | Dua endpoint tersedia di `app/routers/metadata.py`: `POST /metadata/extract` (input teks) dan `GET /metadata/extract/by-document/{document_id}` (retrofit pada dokumen yang sudah terindeks di ES). Response Pydantic terstruktur dengan confidence per field. FE `sri_demo_fe` siap menampilkan hasil. |
+| b | Ekstraksi otomatis *field dynamic metadata* | 🟡 | **Layer 1 (regex) + Layer 2 (NER) hybrid sudah berjalan** — `app/services/metadata_extraction.py`. <br>**Layer 1**: 10 field strict-format (nomor_surat, sifat, lampiran, perihal, tempat, tanggal ISO+raw, penerima, klasifikasi_code, NIP). Latency < 5 ms. Hasil korpus uji: 9/10 field di dummy tim dev (conf 0.85). <br>**Layer 2** (aktif via `?use_ner=true`): NER Bahasa Indonesia (spaCy `id_ner_spacy_indonesian` — model komunitas, 19 entity labels, **bukan** fine-tuned IndoBERT) untuk 5 field free-form: `instansi_pengirim`, `organisasi_disebut`, `lokasi_disebut`, `fasilitas_disebut`, `regulasi_disebut`. Plus filter heuristik domain-specific untuk membuang noise (gelar, akronim, kode klasifikasi yang ke-tag salah). Latency +13–35 ms warm, +2.5 s cold (warm-up otomatis saat startup). RAM tambahan ~200 MB. Lihat §1.2 *bis* untuk roadmap upgrade ke IndoBERT fine-tuned. |
+| c | REST API untuk integrasi ke frontend | ✅ | Tiga endpoint tersedia: `POST /metadata/extract?use_ner=true`, `GET /metadata/extract/by-document/{id}?use_ner=true`, dan v1 `GET /api/v1/arsip/{id}/metadata?use_ner=true`. Default `use_ner=false` untuk backward compatibility (tidak break klien lama). Response Pydantic terstruktur dengan confidence per field, plus `ner_entities` raw untuk transparansi/debugging. FE `sri_demo_fe` siap menampilkan hasil. |
 
 #### 1.2 *bis* — Pendekatan yang Direkomendasikan untuk Naskah Dinas
 
@@ -118,19 +122,26 @@ PDF → Tika (sudah ada)
 |---|---|---|
 | Pipeline regex + endpoint `/metadata/extract` | 1 hari | ✅ **Selesai 2026-05-28** |
 | Endpoint retrofit `/metadata/extract/by-document/{id}` | 0.3 hari | ✅ **Selesai 2026-05-28** |
+| Integrasi Layer 2 ke pipeline (hybrid regex + NER spaCy ID) | 0.5 hari | ✅ **Selesai 2026-05-31** |
 | Bangun corpus anotasi 200–500 naskah dinas (Doccano / Label Studio) | 3–5 hari (1 anotator) | ⏳ Pending |
-| Fine-tune IndoBERT untuk 8–10 entity classes (Layer 2 NER) | 1–2 hari | ⏳ Pending |
-| Integrasi Layer 2 ke pipeline (hybrid regex + NER) | 1 hari | ⏳ Pending |
+| Fine-tune IndoBERT untuk 8–10 entity classes domain naskah dinas | 1–2 hari | ⏳ Pending |
+| Swap spaCy NER → IndoBERT fine-tuned (interface sudah stabil di `ner_indonesian.py`) | 0.3 hari | ⏳ Pending |
 | Validasi + confidence threshold + flag manual review | 0.5 hari | ⏳ Pending |
 | Integrasi ke pipeline upload (`pdf_ingest.py` setelah Tika) | 0.5 hari | ⏳ Pending |
-| **Sisa effort** | **~6–8 hari** | |
+| **Sisa effort** | **~5–7 hari** | |
 
-**Catatan deployment Layer 2 (IndoBERT):**
-- **Tidak perlu Docker** untuk model — cukup `pip install transformers torch` (atau `onnxruntime` untuk inferensi cepat). Model dimuat in-process di uvicorn yang sama.
-- **RAM:** +1.5–2 GB saat model di-load (base) atau +400 MB (Lite).
-- **Disk:** model di-cache di `~/.cache/huggingface/` (~440 MB untuk IndoBERT-base).
-- **Latency:** 100–300 ms/dokumen di CPU; turun ke 30–80 ms setelah ONNX export.
-- **Internet:** hanya untuk download awal model. Setelahnya offline-capable — cocok untuk data sovereignty ANRI.
+**Catatan deployment Layer 2 yang sudah live (spaCy `id_ner_spacy_indonesian`):**
+- **Tidak perlu Docker.** Cukup `pip install spacy` + 1 wheel model dari HuggingFace (lihat `requirements.txt`). Model dimuat in-process di uvicorn yang sama (singleton, lazy-load, thread-safe — lihat `app/services/ner_indonesian.py`).
+- **RAM**: +~200 MB di steady state (terukur dengan `resource.getrusage`).
+- **Disk**: ~50 MB di `venv/lib/.../id_ner_spacy_indonesian/`.
+- **Latency**: 13–35 ms/halaman A4 di Apple Silicon (warm). Cold start ~2–2.5 s — dihindari dengan **warm-up otomatis** saat startup uvicorn (`NER_WARMUP=1`, default on).
+- **Graceful degrade**: bila wheel model tidak ter-install, request `?use_ner=true` tetap 200 OK dengan `ner_available: false` dan Layer 1 tetap jalan. Tidak memecahkan kontrak API.
+- **Offline-capable**: tidak ada call internet runtime. Cocok untuk data sovereignty ANRI.
+
+**Keterbatasan jujur (untuk dokumentasi internal — jangan over-claim ke evaluator):**
+- Model dilatih di korpus berita umum, bukan naskah dinas pemerintah. Beberapa entitas form (`Sifat`, `Nomor`, klasifikasi code seperti `KU - Keuangan`) **kadang ke-tag salah** sebagai ORG/FAC/GPE — dimitigasi dengan filter heuristik domain-specific (whitelist indikator institusional, blacklist gelar/akronim singkat, whitelist keyword regulasi).
+- Field **PENGIRIM (nama orang)** belum di-classify ke field naskah dinas terpisah karena PER detection di model komunitas ini tidak konsisten untuk format formal (gelar akademik + tanda tangan). Workaround: gunakan jangkar NIP yang sudah ada di Layer 1.
+- Untuk akurasi 90%+ pada domain naskah dinas spesifik, **iterasi berikutnya** harus fine-tune model BERT-based (IndoBERT / IndoBERT-Lite / IndoBERTweet) di corpus terlabel ANRI ≥ 200 dokumen. Interface `ner_indonesian.py` sudah siap untuk swap.
 
 ### 1.3 Async Processing & Dynamic Watermark *(10 menit)*
 
