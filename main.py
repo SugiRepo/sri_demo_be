@@ -6,7 +6,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.database import init_db
 from app.logging_config import setup_logging
-from app.routers import documents, health
+from app.routers import documents, health, metadata
 
 
 @asynccontextmanager
@@ -35,3 +35,4 @@ app.add_middleware(
 
 app.include_router(health.router)
 app.include_router(documents.router)
+app.include_router(metadata.router)

@@ -63,8 +63,74 @@ Pengukuran ini bersifat indikatif (belum benchmark formal). Dilakukan pada 28 Me
 | # | Requirement KAK | Status | Catatan |
 |---|---|---|---|
 | a | Parsing dokumen | ✅ | Tika 3.3 sudah parse PDF (text per halaman). |
-| b | Ekstraksi otomatis *field dynamic metadata* | ❌ | Tidak ada model AI/NER untuk ekstrak nomor surat, perihal, tanggal, instansi, klasifikasi, dst. Kandidat: spaCy + rule-based, atau LLM (OpenAI/Anthropic/Ollama) dengan prompt structured output. |
-| c | REST API untuk integrasi ke frontend | 🟡 | API upload/search ada, tapi belum ada endpoint khusus `/metadata/extract` yang mengembalikan struktur metadata. |
+| b | Ekstraksi otomatis *field dynamic metadata* | 🟡 | **Layer 1 (regex) selesai** — `app/services/metadata_extraction.py` mengekstrak 10 field: nomor_surat, sifat, lampiran, perihal, tempat, tanggal (ISO + raw), penerima, klasifikasi_code, NIP. Latency < 50 ms. Hasil pada korpus uji 28 Mei 2026: **9/10 field** pada korpus dummy tim dev (rata-rata confidence 0.85, field `tempat` tidak ada di sumber), **10/10 field** pada template formal (confidence 0.92). Layer 2 (NER IndoBERT fine-tuned) untuk field free-form belum diimplementasi — lihat §1.2 *bis*. |
+| c | REST API untuk integrasi ke frontend | ✅ | Dua endpoint tersedia di `app/routers/metadata.py`: `POST /metadata/extract` (input teks) dan `GET /metadata/extract/by-document/{document_id}` (retrofit pada dokumen yang sudah terindeks di ES). Response Pydantic terstruktur dengan confidence per field. FE `sri_demo_fe` siap menampilkan hasil. |
+
+#### 1.2 *bis* — Pendekatan yang Direkomendasikan untuk Naskah Dinas
+
+Naskah dinas pemerintah Indonesia memiliki struktur sangat predictable (header `Nomor:`, `Sifat:`, `Lampiran:`, `Perihal:`, `Yth.`, tanggal tempat-Jakarta, tanda tangan dengan jabatan). Karakteristik ini sangat menguntungkan pendekatan **NLP terstruktur**, bukan LLM generatif.
+
+**Mengapa NLP mini-model lebih tepat dari LLM API untuk konteks ANRI:**
+
+| Aspek | LLM API (GPT/Claude/Gemini) | NLP/NER mini-model on-prem |
+|---|---|---|
+| Data sovereignty | ❌ Data naskah dinas keluar ke server luar negeri | ✅ Tetap di infrastruktur ANRI |
+| Latency per dokumen | 2–5 detik | < 50 ms (CPU saja, ONNX-exported) |
+| Biaya marginal | ~$0.001–0.01 per dokumen × juta dokumen | ~$0 setelah training |
+| Determinisme | Bisa halusinasi, format tidak konsisten | Deterministik + confidence score per entitas |
+| Auditability | Black box, sulit pertanggungjawaban | Posisi token + score tiap entitas dapat di-trace |
+| Kepatuhan SPBE | Bermasalah (kelola data sensitif via pihak ketiga) | Aman |
+
+**Arsitektur pipeline yang direkomendasikan:**
+
+```
+PDF → Tika (sudah ada)
+       ↓ raw text + posisi
+   [1. Rule-based regex]      ← 80–90% kasus standar
+       │   NOMOR_SURAT, TANGGAL, LAMPIRAN, SIFAT, PERIHAL, KLASIFIKASI
+       ↓ residual text
+   [2. NER fine-tuned IndoBERT] ← edge cases & field free-form
+       │   PENGIRIM, PENERIMA, NAMA_JABATAN, NAMA_INSTANSI, TANDATANGAN
+       ↓
+   [3. Normalisasi]            ← "28 Mei 2026" → "2026-05-28"; "UM.01" → master Perka
+       ↓
+   [4. Validasi + confidence] ← bila nomor tidak match format → flag manual review
+       ↓
+   {metadata terstruktur JSON} → Postgres + ES
+```
+
+**Kandidat model untuk Bahasa Indonesia (urutan rekomendasi):**
+
+| Model | Params | Cocok untuk | Sumber |
+|---|---|---|---|
+| **IndoBERT-base** (`indobenchmark/indobert-base-p1`) | 110 M | Token classification (NER), fine-tunable | HuggingFace |
+| **IndoBERT-Lite** | 22 M | Edge deployment, latency super rendah | HuggingFace |
+| **NusaBERT** | 110 M | Multi-bahasa Nusantara | HuggingFace |
+| **XLM-RoBERTa-base** | 270 M | Baseline multilingual | HuggingFace |
+| **spaCy `id_core_news_lg`** | ~50 MB | Quick start, entity terbatas (PER/LOC/ORG) | spaCy |
+| **LayoutLMv3** | 130 M | Bila perlu spatial cues (mis. nomor di pojok kanan atas halaman) | Microsoft |
+
+**LLM API hanya dipakai sebagai fallback atau enrichment** (mis. ringkasan, klasifikasi semantik halus), bukan jalur ekstraksi utama. Untuk PoC, layer regex saja sudah cukup mendemonstrasikan ekstraksi 80% kasus; layer NER ditambahkan jika waktu memungkinkan.
+
+**Effort realistis untuk implementasi PoC:**
+
+| Langkah | Effort | Status |
+|---|---|---|
+| Pipeline regex + endpoint `/metadata/extract` | 1 hari | ✅ **Selesai 2026-05-28** |
+| Endpoint retrofit `/metadata/extract/by-document/{id}` | 0.3 hari | ✅ **Selesai 2026-05-28** |
+| Bangun corpus anotasi 200–500 naskah dinas (Doccano / Label Studio) | 3–5 hari (1 anotator) | ⏳ Pending |
+| Fine-tune IndoBERT untuk 8–10 entity classes (Layer 2 NER) | 1–2 hari | ⏳ Pending |
+| Integrasi Layer 2 ke pipeline (hybrid regex + NER) | 1 hari | ⏳ Pending |
+| Validasi + confidence threshold + flag manual review | 0.5 hari | ⏳ Pending |
+| Integrasi ke pipeline upload (`pdf_ingest.py` setelah Tika) | 0.5 hari | ⏳ Pending |
+| **Sisa effort** | **~6–8 hari** | |
+
+**Catatan deployment Layer 2 (IndoBERT):**
+- **Tidak perlu Docker** untuk model — cukup `pip install transformers torch` (atau `onnxruntime` untuk inferensi cepat). Model dimuat in-process di uvicorn yang sama.
+- **RAM:** +1.5–2 GB saat model di-load (base) atau +400 MB (Lite).
+- **Disk:** model di-cache di `~/.cache/huggingface/` (~440 MB untuk IndoBERT-base).
+- **Latency:** 100–300 ms/dokumen di CPU; turun ke 30–80 ms setelah ONNX export.
+- **Internet:** hanya untuk download awal model. Setelahnya offline-capable — cocok untuk data sovereignty ANRI.
 
 ### 1.3 Async Processing & Dynamic Watermark *(10 menit)*
 
@@ -233,9 +299,6 @@ app/
     ├── document_storage.py# Simpan file ke filesystem
     ├── pdf_ingest.py      # Background task: Tika → ES bulk index
     └── pdf_validation.py  # pypdf validation pre-upload
-scripts/
-├── generate_corpus.py     # Bangkitkan PDF naskah dinas dummy Bahasa Indonesia
-└── seed_corpus.py         # Upload paralel ke /upload BE
 main.py                    # FastAPI entry + CORS + lifespan (setup_logging + init_db)
 requirements.txt
 docker-compose.yml         # tika (elasticsearch dinonaktifkan — pindah ke Cloud)
