@@ -2,15 +2,19 @@ import logging
 import os
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI
+from fastapi import Depends, FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.api_v1.middleware import install_v1_middleware
 from app.api_v1.router import api_v1_router
+from app.config import API_AUTH_ENABLED, API_KEYS, TIKA_PDF_OCR_ENABLED
 from app.database import init_db
+from app.dependencies.api_auth import verify_api_key
 from app.logging_config import setup_logging
-from app.routers import documents, health, metadata
+from app.routers import api_keys, documents, generate, health, metadata, watermarks
 from app.services import ner_indonesian
+
+logger = logging.getLogger("app")
 
 # Aktifkan warm-up NER saat startup supaya request pertama tidak menunggu
 # ~2 detik load model. Bisa di-disable via env (mis. di lingkungan low-RAM /
@@ -21,6 +25,15 @@ _NER_WARMUP_DEFAULT = "1"
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     setup_logging()
+    logger.info(
+        "Tika PDF OCR %s",
+        "enabled" if TIKA_PDF_OCR_ENABLED else "disabled",
+    )
+    logger.info(
+        "API auth %s configured_keys=%s",
+        "enabled" if API_AUTH_ENABLED else "disabled",
+        len(API_KEYS),
+    )
     init_db()
 
     if os.getenv("NER_WARMUP", _NER_WARMUP_DEFAULT) == "1":
@@ -136,5 +149,17 @@ app.include_router(api_v1_router)
 
 # Endpoint legacy non-versioned — tetap dipertahankan agar tidak memutus klien lama.
 app.include_router(health.router)
-app.include_router(documents.router)
+app.include_router(api_keys.router)
+app.include_router(
+    documents.router,
+    dependencies=[Depends(verify_api_key)],
+)
+app.include_router(
+    generate.router,
+    dependencies=[Depends(verify_api_key)],
+)
+app.include_router(
+    watermarks.router,
+    dependencies=[Depends(verify_api_key)],
+)
 app.include_router(metadata.router)

@@ -4,11 +4,13 @@ from datetime import datetime, timezone
 
 from elasticsearch import helpers
 from elasticsearch.helpers import BulkIndexError
-from tika import parser
-
-from app.config import INDEX_NAME, TIKA_ENDPOINT, es
+from app.config import INDEX_NAME, TIKA_ENDPOINT, TIKA_PDF_OCR_ENABLED, es
 from app.services.document_db import update_document_status_in_background
 from app.services.document_storage import save_document_to_storage
+from app.services.tika_headers import get_tika_headers
+from app.services.tika_page_extract import extract_pdf_pages
+
+#os.environ["TESSDATA_PREFIX"] = r"C:\Program Files\Tesseract-OCR\tessdata"
 
 logger = logging.getLogger("app.services.pdf_ingest")
 
@@ -118,28 +120,33 @@ def process_and_index_pdf(file_path: str, document_id: str, original_filename: s
     """Heavy OCR and Elasticsearch ingestion task run in the background."""
     try:
         logger.info(
-            "[1/6] Background task started document_id=%s file=%s",
+            "[1/6] Background task started document_id=%s file=%s ocr=%s",
             document_id,
             file_path,
+            TIKA_PDF_OCR_ENABLED,
         )
 
-        headers = {
-            "X-Tika-PDFOcrStrategy": "no_ocr",
-            "X-Tika-PDFextractInlineImages": "false",
-            "X-Tika-OCRmaxFileSizeToOcr": "0",
-        }
+        headers = get_tika_headers()
+        logger.info("[2/6] Calling Tika at %s headers=%s", TIKA_ENDPOINT, headers)
+        # Old approach: plain Tika text + form-feed page breaks (often missing in PDFs).
+        # raw = parser.from_file(
+        #     file_path, serverEndpoint=TIKA_ENDPOINT, headers=headers
+        # )
+        # content = raw.get("content", "")
+        # pages = content.split("\f")
 
-        logger.info("[2/6] Calling Tika at %s", TIKA_ENDPOINT)
-        raw = parser.from_file(
-            file_path, serverEndpoint=TIKA_ENDPOINT, headers=headers
+        pages, split_method = extract_pdf_pages(
+            file_path,
+            server_endpoint=TIKA_ENDPOINT,
+            headers=headers,
         )
-        content = raw.get("content", "")
-        pages = content.split("\f")
+        total_chars = sum(len(p) for p in pages)
         logger.info(
-            "[3/6] Tika finished document_id=%s pages_split=%s content_len=%s",
+            "[3/6] Tika finished document_id=%s pages_split=%s split_method=%s total_chars=%s",
             document_id,
             len(pages),
-            len(content),
+            split_method,
+            total_chars,
         )
 
         actions = []

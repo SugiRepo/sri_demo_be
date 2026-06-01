@@ -25,6 +25,25 @@ def build_storage_path(
     return DOCUMENT_STORAGE_ROOT / year / monthdate / dest_name
 
 
+def resolve_document_file(
+    document_id: str,
+    filename: str,
+    created_at: datetime,
+) -> Path:
+    """
+    Path used at archive time: {ROOT}/{YYYY}/{YYYYMMDD}/{document_id}_{filename}.
+    Date segments come from documents.created_at.
+    """
+    when = created_at
+    if when.tzinfo is None:
+        when = when.replace(tzinfo=timezone.utc)
+    year = when.strftime("%Y")
+    monthdate = when.strftime("%Y%m%d")
+    safe_name = Path(filename or "document").name
+    dest_name = f"{document_id}_{safe_name}"
+    return DOCUMENT_STORAGE_ROOT / year / monthdate / dest_name
+
+
 def save_document_to_storage(
     source_path: str,
     document_id: str,

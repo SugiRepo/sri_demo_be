@@ -32,9 +32,24 @@ DATABASE_URL = os.getenv(
 ELASTICSEARCH_URL = os.getenv("ELASTICSEARCH_URL", "http://localhost:9200")
 ELASTICSEARCH_API_KEY = os.getenv("ELASTICSEARCH_API_KEY")
 TIKA_ENDPOINT = os.getenv("TIKA_ENDPOINT", "http://localhost:9998/tika")
+TIKA_PDF_OCR_ENABLED = os.getenv("TIKA_PDF_OCR_ENABLED", "false").lower() == "true"
+TIKA_OCR_LANGUAGE = os.getenv("TIKA_OCR_LANGUAGE", "eng+ind")
+TIKA_OCR_MAX_FILE_SIZE = os.getenv("TIKA_OCR_MAX_FILE_SIZE", "52428800")
+
 INDEX_NAME = os.getenv("ELASTICSEARCH_INDEX", "documents")
 
 MIN_PDF_TEXT_CHARS = int(os.getenv("MIN_PDF_TEXT_CHARS", "50"))
+
+API_AUTH_ENABLED = os.getenv("API_AUTH_ENABLED", "true").lower() == "true"
+
+
+def _parse_api_keys(raw: str | None) -> frozenset[str]:
+    if not raw:
+        return frozenset()
+    return frozenset(k.strip() for k in raw.split(",") if k.strip())
+
+
+API_KEYS = _parse_api_keys(os.getenv("API_KEYS"))
 
 _storage_root = Path(
     os.getenv("DOCUMENT_STORAGE_ROOT", "storage/documents")

@@ -17,20 +17,8 @@ def is_pdf_file(file_path: str, filename: str | None = None) -> bool:
         return f.read(5).startswith(b"%PDF")
 
 
-def _count_extractable_chars(file_path: str) -> int:
-    reader = PdfReader(file_path)
-    total = 0
-    for page in reader.pages:
-        text = page.extract_text() or ""
-        total += len(text.strip())
-    return total
-
-
-def validate_pdf_for_upload(file_path: str, min_chars: int) -> None:
-    """
-    Ensure the file is a readable PDF with an embedded text layer.
-    Image-only / scanned PDFs (no selectable text) are rejected.
-    """
+def validate_pdf_structure(file_path: str) -> None:
+    """Ensure the file is a readable PDF (valid header and parseable)."""
     with open(file_path, "rb") as f:
         header = f.read(5)
 
@@ -38,14 +26,46 @@ def validate_pdf_for_upload(file_path: str, min_chars: int) -> None:
         raise PdfValidationError("File is not a valid PDF.", "invalid_pdf")
 
     try:
-        char_count = _count_extractable_chars(file_path)
+        reader = PdfReader(file_path)
+        if len(reader.pages) == 0:
+            raise PdfValidationError("PDF has no pages.", "empty_pdf")
     except PdfReadError as e:
         raise PdfValidationError(
             f"PDF could not be read: {e}", "pdf_read_error"
         ) from e
 
-    if char_count < min_chars:
+
+def validate_pdf_has_text_layer(file_path: str, min_chars: int) -> None:
+    """
+    Ensure the PDF has enough embedded (selectable) text without OCR.
+    Use only when Tika OCR is disabled.
+    """
+    reader = PdfReader(file_path)
+    total = 0
+    for page in reader.pages:
+        text = page.extract_text() or ""
+        total += len(text.strip())
+
+    if total < min_chars:
         raise PdfValidationError(
             "PDF has no extractable text (image-only or scanned without a text layer).",
             "no_extractable_text",
         )
+
+
+def validate_pdf_for_upload(
+    file_path: str,
+    min_chars: int,
+    *,
+    require_text_layer: bool = True,
+) -> None:
+    """
+    Validate PDF at upload.
+
+    - Always: valid PDF structure.
+    - If require_text_layer=True (no OCR): reject image-only scans early via pypdf.
+    - If require_text_layer=False (OCR enabled): allow scans; Tika+Tesseract extracts text later.
+    """
+    validate_pdf_structure(file_path)
+    if require_text_layer:
+        validate_pdf_has_text_layer(file_path, min_chars)
