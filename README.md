@@ -18,6 +18,8 @@ cd sri-demo
 python -m venv venv
 .\venv\Scripts\Activate.ps1
 pip install -r requirements.txt
+# NER model wheel sudah masuk di requirements.txt (~7.5 MB dari HuggingFace).
+# Bila huggingface.co diblokir, lihat catatan "NER model" di bawah.
 
 copy .env.example .env
 # Edit .env with your DATABASE_URL, ELASTICSEARCH_URL, ELASTICSEARCH_API_KEY, etc.
@@ -152,6 +154,32 @@ CREATE DATABASE sri_demo;
 ```
 
 Tables are created on API startup (`init_db` in lifespan).
+
+**NER model (Bahasa Indonesia)** — dipakai oleh Layer 2 metadata extraction (`?use_ner=true`).
+
+Wheel `id_ner_spacy_indonesian` sudah masuk sebagai dependency aktif di `requirements.txt`, jadi `pip install -r requirements.txt` akan mengunduh dan meng-install model dari HuggingFace secara otomatis (~7.5 MB).
+
+Verifikasi setelah install:
+
+```bash
+python -c "import spacy; nlp = spacy.load('id_ner_spacy_indonesian'); print(nlp.get_pipe('ner').labels)"
+```
+
+Bila proses install gagal karena `huggingface.co` diblokir firewall/proxy korporat, ada dua opsi:
+
+1. **Install manual dari mirror internal** — unduh wheel di mesin lain lalu transfer:
+   ```bash
+   pip install ./id_ner_spacy_indonesian-1.1.0-py3-none-any.whl
+   ```
+2. **Fallback ke model multilingual resmi spaCy** (`xx_ent_wiki_sm`, dilatih di Wikipedia, mencakup Bahasa Indonesia tapi hanya 4 label: PER/LOC/ORG/MISC — akurasi lebih rendah untuk naskah dinas):
+   ```bash
+   pip install https://github.com/explosion/spacy-models/releases/download/xx_ent_wiki_sm-3.8.0/xx_ent_wiki_sm-3.8.0-py3-none-any.whl
+   ```
+   Lalu ganti `NER_MODEL_NAME = "xx_ent_wiki_sm"` di `app/services/ner_indonesian.py`.
+
+   _Catatan_: spaCy tidak menyediakan model `id_core_news_sm/md/lg` resmi (bahasa `id` hanya punya blank tokenizer di registry spaCy — lihat https://spacy.io/usage/models). Sumber model NER Bahasa Indonesia satu-satunya jalan adalah komunitas (asmud/HF) atau fine-tuning sendiri.
+
+Kalau model tidak ter-install, service tetap jalan: request `?use_ner=true` akan return `ner_available: false` dan Layer 1 (regex) tetap aktif. Disable warm-up dengan `NER_WARMUP=0` di `.env` untuk lingkungan low-RAM/CI.
 
 ## Project layout
 
