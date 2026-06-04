@@ -1,0 +1,27 @@
+apiVersion: traefik.io/v1alpha1
+kind: IngressRoute
+metadata:
+  name: sri-demo-be
+  namespace: default
+  labels:
+    app: sri-demo-be
+spec:
+  entryPoints:
+    - web
+    - websecure
+  routes:
+    - match: Host(`sri-demo-api.saecloud.com`)
+      kind: Rule
+      services:
+        - name: sri-demo-be
+          port: 80
+    - match: Host(`sri-demo-api.saecloud.com`) && PathPrefix(`/docs`) || PathPrefix(`/openapi.json`)
+      kind: Rule
+      services:
+        - name: sri-demo-be
+          port: 80
+  # Uncomment untuk enable HTTPS/TLS
+  # tls:
+  #   certResolver: letsencrypt
+  #   domains:
+  #   - main: sri-demo-api.saecloud.com

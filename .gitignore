@@ -17,6 +17,8 @@ build/
 .env.development
 .env.production
 .env.local
+infra/secrets.yaml
+infra/.secrets/
 
 # Runtime data
 logs/
