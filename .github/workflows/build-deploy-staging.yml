@@ -7,7 +7,7 @@ on:
 
 env:
   REGISTRY: ghcr.io
-  IMAGE_NAME: ghcr.io/sugiRepo/sri_demo_be
+  IMAGE_NAME: ghcr.io/sugirepo/sri_demo_be
 
 jobs:
   build:
@@ -80,7 +80,7 @@ jobs:
       - name: Update deployment image and trigger rolling restart
         run: |
           kubectl set image deployment/sri-demo-be-deployment \
-            sri-demo-be=ghcr.io/sugiRepo/sri_demo_be:be-latest \
+            sri-demo-be=ghcr.io/sugirepo/sri_demo_be:be-latest \
             -n default
           
           # Trigger rolling restart by updating annotation (no downtime)

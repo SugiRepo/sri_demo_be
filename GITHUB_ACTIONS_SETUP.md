@@ -34,7 +34,7 @@ kubectl apply -f infra/secrets.yaml
 `infra/deployment.yaml` sudah di-update dengan:
 
 - **`imagePullSecrets`**: Reference ke `ghcr-pull-secret` untuk pull image dari GHCR
-- **`image`**: Updated ke `ghcr.io/sugiRepo/sri_demo_be:be-latest`
+- **`image`**: Updated ke `ghcr.io/sugirepo/sri_demo_be:be-latest`
 
 ## Workflow Steps Breakdown
 
@@ -44,8 +44,8 @@ kubectl apply -f infra/secrets.yaml
 - Login ke GHCR dengan GitHub token
 - Generate image tag dengan format: `staging-{short-sha}-{timestamp}`
 - Build dan push image dengan 2 tags:
-  - `ghcr.io/sugiRepo/sri_demo_be:staging-{short-sha}-{timestamp}` (unique tag)
-  - `ghcr.io/sugiRepo/sri_demo_be:be-latest` (latest tag untuk rolling update)
+  - `ghcr.io/sugirepo/sri_demo_be:staging-{short-sha}-{timestamp}` (unique tag)
+  - `ghcr.io/sugirepo/sri_demo_be:be-latest` (latest tag untuk rolling update)
 
 ### Deploy Step (`deploy` job)
 - Depends on `build` job (berjalan setelah build selesai)
@@ -61,7 +61,7 @@ kubectl apply -f infra/secrets.yaml
 ```bash
 # Step 1: Set new image
 kubectl set image deployment/sri-demo-be-deployment \
-  sri-demo-be=ghcr.io/sugiRepo/sri_demo_be:be-latest \
+  sri-demo-be=ghcr.io/sugirepo/sri_demo_be:be-latest \
   -n default
 
 # Step 2: Trigger rolling restart dengan annotation
